@@ -33,11 +33,21 @@ async function getRelevantEpgForPlaylist(m3uUrl) {
         console.log("New EPG source, inserting...");
         source = await epgSourceRepo.create(epgUrl);
         shouldRefresh = true;
-    } else if (isStale(source)) {
-        console.log("EPG source is stale, needs refresh...");
-        shouldRefresh = true;
     } else {
-        console.log("EPG source is fresh, reuse existing data");
+        const channelsCount = await channelRepo.countChannelsBySourceId(source.id);
+        const programmesCount = await programmeRepo.countProgrammesBySourceId(source.id);
+
+        const hasData = channelsCount > 0 && programmesCount > 0;
+
+        if (!hasData) {
+            console.log("EPG source exists but has no data, needs refresh...");
+            shouldRefresh = true;
+        } else if (isStale(source)) {
+            console.log("EPG source is stale, needs refresh...");
+            shouldRefresh = true;
+        } else {
+            console.log("EPG source is fresh, reuse existing data");
+        }
     }
 
     const requestedChannelIds = Array.from(tvgIds);

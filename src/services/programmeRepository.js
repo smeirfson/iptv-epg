@@ -59,9 +59,9 @@ async function getProgrammesBySourceIdAndChannelIds(sourceId, channelIds) {
         `SELECT id, source_id, channel_xmltv_id, start_time, end_time, title, description
      FROM programmes
      WHERE source_id = $1
-        AND channel_xmltv_id = ANY($2)
-        AND start_time >= NOW()
-        AND start_time <= NOW() + INTERVAL '6 hours'
+       AND channel_xmltv_id = ANY($2)
+       AND start_time >= NOW()
+       AND start_time <= NOW() + INTERVAL '6 hours'
      ORDER BY channel_xmltv_id, start_time`,
         [sourceId, channelIds]
     );
@@ -69,7 +69,19 @@ async function getProgrammesBySourceIdAndChannelIds(sourceId, channelIds) {
     return result.rows;
 }
 
+async function countProgrammesBySourceId(sourceId) {
+    const result = await pool.query(
+        `SELECT COUNT(*)::int AS count
+     FROM programmes
+     WHERE source_id = $1`,
+        [sourceId]
+    );
+
+    return result.rows[0].count;
+}
+
 module.exports = {
     replaceAllProgrammesForSource,
     getProgrammesBySourceIdAndChannelIds,
+    countProgrammesBySourceId,
 };

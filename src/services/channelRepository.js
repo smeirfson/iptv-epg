@@ -28,7 +28,19 @@ async function getChannelsBySourceIdAndChannelIds(sourceId, channelIds) {
     return result.rows;
 }
 
+async function countChannelsBySourceId(sourceId) {
+    const result = await pool.query(
+        `SELECT COUNT(*)::int AS count
+     FROM channels
+     WHERE source_id = $1`,
+        [sourceId]
+    );
+
+    return result.rows[0].count;
+}
+
 module.exports = {
     insertChannels,
     getChannelsBySourceIdAndChannelIds,
+    countChannelsBySourceId,
 };
