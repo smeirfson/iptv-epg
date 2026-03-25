@@ -5,7 +5,10 @@ const epgSourceRepo = require("./epgSourceRepository");
 const channelRepo = require("./channelRepository");
 const programmeRepo = require("./programmeRepository");
 const { isStale } = require("./epgSourceRepository");
-const { parseXmltvDate } = require("../utils/xmltvDate");
+const { parseXmltvDate, isWithinNextHours } = require("../utils/xmltvDate");
+
+const PROGRAMME_BATCH_SIZE = 1000;
+const PROGRAMME_STORE_WINDOW_HOURS = 24;
 
 async function getRelevantEpgForPlaylist(m3uUrl) {
     console.log("Parsing M3U...");
@@ -58,14 +61,18 @@ async function getRelevantEpgForPlaylist(m3uUrl) {
         const epgStream = await downloadEpgStream(epgUrl);
 
         const parsedChannels = [];
-        const parsedProgrammes = [];
+        let programmeBuffer = [];
+        let savedProgrammeCount = 0;
+
+        await programmeRepo.deleteProgrammesForSource(source.id);
+        console.log("Deleted old programmes for source");
 
         const result = await parseXMLStream(epgStream, {
             onChannel(channel) {
                 parsedChannels.push(channel);
             },
 
-            onProgramme(programme) {
+            async onProgramme(programme) {
                 const startTime = parseXmltvDate(programme.start);
                 const endTime = parseXmltvDate(programme.stop);
 
@@ -73,25 +80,43 @@ async function getRelevantEpgForPlaylist(m3uUrl) {
                     return;
                 }
 
-                parsedProgrammes.push({
+                if (!isWithinNextHours(startTime, PROGRAMME_STORE_WINDOW_HOURS)) {
+                    return;
+                }
+
+                programmeBuffer.push({
                     channel: programme.channel,
                     startTime,
                     endTime,
                     title: programme.title || null,
                     description: programme.desc || null,
                 });
+
+                if (programmeBuffer.length >= PROGRAMME_BATCH_SIZE) {
+                    const batch = programmeBuffer;
+                    programmeBuffer = [];
+
+                    await programmeRepo.insertProgrammeBatch(source.id, batch);
+                    savedProgrammeCount += batch.length;
+
+                    console.log(`Saved programme batch. Total saved so far: ${savedProgrammeCount}`);
+                }
             },
         });
+
+        if (programmeBuffer.length > 0) {
+            await programmeRepo.insertProgrammeBatch(source.id, programmeBuffer);
+            savedProgrammeCount += programmeBuffer.length;
+            console.log(`Saved final programme batch. Total saved: ${savedProgrammeCount}`);
+        }
 
         console.log(`Parsed ${result.channelCount} channels`);
         console.log(`Parsed ${result.programmeCount} programmes`);
 
         await channelRepo.insertChannels(source.id, parsedChannels);
-        await programmeRepo.replaceAllProgrammesForSource(source.id, parsedProgrammes);
         await epgSourceRepo.markSynced(source.id);
 
         console.log("Channels saved to DB");
-        console.log("Programmes saved to DB");
         console.log("EPG source marked as synced");
     }
 

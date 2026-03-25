@@ -1,57 +1,44 @@
 const { pool } = require("./db");
 
-async function replaceAllProgrammesForSource(sourceId, programmes) {
-    const client = await pool.connect();
+async function deleteProgrammesForSource(sourceId) {
+    await pool.query(
+        `DELETE FROM programmes
+     WHERE source_id = $1`,
+        [sourceId]
+    );
+}
 
-    try {
-        await client.query("BEGIN");
+async function insertProgrammeBatch(sourceId, programmes) {
+    if (!programmes || programmes.length === 0) {
+        return;
+    }
 
-        await client.query(
-            `DELETE FROM programmes
-       WHERE source_id = $1`,
-            [sourceId]
+    const values = [];
+    const placeholders = [];
+
+    programmes.forEach((programme, index) => {
+        const base = index * 6;
+
+        placeholders.push(
+            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`
         );
 
-        const batchSize = 1000;
+        values.push(
+            sourceId,
+            programme.channel,
+            programme.startTime,
+            programme.endTime,
+            programme.title,
+            programme.description
+        );
+    });
 
-        for (let i = 0; i < programmes.length; i += batchSize) {
-            const batch = programmes.slice(i, i + batchSize);
-
-            const values = [];
-            const placeholders = [];
-
-            batch.forEach((programme, index) => {
-                const base = index * 6;
-
-                placeholders.push(
-                    `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`
-                );
-
-                values.push(
-                    sourceId,
-                    programme.channel,
-                    programme.startTime,
-                    programme.endTime,
-                    programme.title,
-                    programme.description
-                );
-            });
-
-            await client.query(
-                `INSERT INTO programmes
-         (source_id, channel_xmltv_id, start_time, end_time, title, description)
-         VALUES ${placeholders.join(", ")}`,
-                values
-            );
-        }
-
-        await client.query("COMMIT");
-    } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-    } finally {
-        client.release();
-    }
+    await pool.query(
+        `INSERT INTO programmes
+     (source_id, channel_xmltv_id, start_time, end_time, title, description)
+     VALUES ${placeholders.join(", ")}`,
+        values
+    );
 }
 
 async function getProgrammesBySourceIdAndChannelIds(sourceId, channelIds) {
@@ -81,7 +68,8 @@ async function countProgrammesBySourceId(sourceId) {
 }
 
 module.exports = {
-    replaceAllProgrammesForSource,
+    deleteProgrammesForSource,
+    insertProgrammeBatch,
     getProgrammesBySourceIdAndChannelIds,
     countProgrammesBySourceId,
 };

@@ -11,6 +11,16 @@ function parseXMLStream(stream, { onChannel, onProgramme }) {
         let channelCount = 0;
         let programmeCount = 0;
 
+        let chain = Promise.resolve();
+        let failed = false;
+
+        function enqueue(task) {
+            chain = chain.then(task).catch((error) => {
+                failed = true;
+                reject(error);
+            });
+        }
+
         parser.on("opentag", (node) => {
             currentText = "";
 
@@ -42,6 +52,8 @@ function parseXMLStream(stream, { onChannel, onProgramme }) {
         });
 
         parser.on("closetag", (tagName) => {
+            if (failed) return;
+
             if (tagName === "display-name" && currentChannel) {
                 if (!currentChannel.displayName) {
                     currentChannel.displayName = currentText;
@@ -57,25 +69,39 @@ function parseXMLStream(stream, { onChannel, onProgramme }) {
             }
 
             if (tagName === "channel" && currentChannel) {
-                channelCount++;
-                onChannel(currentChannel);
+                const channel = currentChannel;
                 currentChannel = null;
+                channelCount++;
+
+                enqueue(async () => {
+                    await onChannel(channel);
+                });
             }
 
             if (tagName === "programme" && currentProgramme) {
-                programmeCount++;
-                onProgramme(currentProgramme);
+                const programme = currentProgramme;
                 currentProgramme = null;
+                programmeCount++;
+
+                enqueue(async () => {
+                    await onProgramme(programme);
+                });
             }
 
             currentText = "";
         });
 
         parser.on("end", () => {
-            resolve({
-                channelCount,
-                programmeCount,
-            });
+            chain
+                .then(() => {
+                    if (failed) return;
+
+                    resolve({
+                        channelCount,
+                        programmeCount,
+                    });
+                })
+                .catch(reject);
         });
 
         parser.on("error", reject);

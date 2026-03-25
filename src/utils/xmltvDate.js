@@ -29,4 +29,18 @@ function parseXmltvDate(xmltvDate) {
     return date;
 }
 
-module.exports = { parseXmltvDate };
+function isWithinNextHours(date, hours) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return false;
+    }
+
+    const now = Date.now();
+    const upperBound = now + hours * 60 * 60 * 1000;
+
+    return date.getTime() >= now && date.getTime() <= upperBound;
+}
+
+module.exports = {
+    parseXmltvDate,
+    isWithinNextHours,
+};
